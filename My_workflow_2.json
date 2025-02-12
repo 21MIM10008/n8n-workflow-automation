@@ -1,0 +1,342 @@
+{
+  "name": "My workflow 2",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "documentId": {
+          "__rl": true,
+          "value": "1I7RAyWAD6Xz_LNrmFk4OG8vKOKL_-KHi3cGvxEpESx8",
+          "mode": "list",
+          "cachedResultName": "Debt Collection Bot Data",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1I7RAyWAD6Xz_LNrmFk4OG8vKOKL_-KHi3cGvxEpESx8/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1I7RAyWAD6Xz_LNrmFk4OG8vKOKL_-KHi3cGvxEpESx8/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 1,
+      "position": [
+        -920,
+        -300
+      ],
+      "id": "47ee377c-3ab3-4c92-b2a0-51e24a88efe7",
+      "name": "Google Sheets Trigger",
+      "credentials": {
+        "googleSheetsTriggerOAuth2Api": {
+          "id": "E0k5dImKuhT7nQDs",
+          "name": "Google Sheets Trigger account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  // Ensure fields exist before using them\n  const name = $input.first().json.Name|| \"Unknown\";\n  const amount = $input.first().json.Amount|| \"0\";\n  const product = $input.first().json.Product || \"Unknown\";\n\n  // Construct the text string\n  const text = `Name: ${name}, Debt: ${amount}, Product: ${product}`;\n\n  // Make the API request to OpenRouter\n  const response = await $http({\n    method: 'POST',\n    url: 'https://openrouter.ai/api/v1/embeddings',\n    headers: {\n      'Authorization':'Bearer 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',\n      'Content-Type': 'application/json'\n    },\n    body: {\n      input: text,\n      model: 'text-embedding-3-small'\n    },\n    responseType: 'json'\n  });\n\n  // Validate API response structure\n  if (!response.data || !response.data.data || !response.data.data[0] || !response.data.data[0].embedding) {\n    throw new Error(\"Unexpected API response format\");\n  }\n\n  // Return the JSON with the vector embedding\n  return { \n    ...$json,\n    vector: response.data.data[0].embedding \n  };\n  \n} catch (error) {\n  console.error(\"Error fetching embeddings:\", error.message);\n  return { ...$json, error: error.message };\n}\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -720,
+        -300
+      ],
+      "id": "048f3a79-707d-4708-bb76-32b33140edb7",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "debtors"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -540,
+        -300
+      ],
+      "id": "483fb1c4-3437-439c-8aed-4b5f924bc0e0",
+      "name": "Supabase",
+      "credentials": {
+        "supabaseApi": {
+          "id": "0YfJ3lm6rSnWZksQ",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -720,
+        -80
+      ],
+      "id": "cf3e34b5-f2fc-490f-a441-e2b5a5f1d48c",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "resource": "call",
+        "from": "+18312152863",
+        "to": "={{ $json.phone }}",
+        "twiml": true,
+        "message": "={{ $json.name }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        -320,
+        -300
+      ],
+      "id": "43397edd-7505-45b7-b414-0a51fee50bc9",
+      "name": "Twilio",
+      "alwaysOutputData": false,
+      "credentials": {
+        "twilioApi": {
+          "id": "uOc6lAZSlTSeZli8",
+          "name": "Twilio account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate TwiML response\nconst twimlResponse = `<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Response>\n  <Say voice=\"Polly.Joanna-Neural\">\n    Hello $input.first().json.name, you owe $$input.first().json.amount, for \n    $input.first().json.product. Please press 1 to pay now or 2 to discuss.\n  </Say>\n  <Gather \n    numDigits=\"1\" \n    action=\"/webhook/twilio-choice\" \n    method=\"POST\"\n  />\n</Response>`;\n\nreturn [\n  {\n    headers: { 'Content-Type': 'text/xml' },\n    body: twimlResponse\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -720,
+        -500
+      ],
+      "id": "3f7b113f-84d4-4664-9bac-896419e21537",
+      "name": "Code3"
+    },
+    {
+      "parameters": {
+        "path": "twilio-voice",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -920,
+        -500
+      ],
+      "id": "824c0236-c732-43f1-878b-7a2d48abfad6",
+      "name": "Webhook",
+      "webhookId": "c634847e-768e-4d7a-8ba9-67accb709b30"
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {
+          "responseKey": "={{ $json.uri }}"
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -160,
+        -300
+      ],
+      "id": "07174b66-be3f-469a-b565-ee94979e0d72",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "operation": "transcribe",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        -20,
+        -300
+      ],
+      "id": "72da2a71-da6c-40fb-b62d-e77f656f3337",
+      "name": "OpenAI",
+      "credentials": {
+        "openAiApi": {
+          "id": "Acvfg31JdRtSSHUS",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "call_logs"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -160,
+        -460
+      ],
+      "id": "04d22412-1a3d-483e-826b-2b6d22dd64cf",
+      "name": "Supabase1",
+      "credentials": {
+        "supabaseApi": {
+          "id": "0YfJ3lm6rSnWZksQ",
+          "name": "Supabase account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Google Sheets Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase": {
+      "main": [
+        [
+          {
+            "node": "Code3",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Twilio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twilio": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Supabase1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Code3": {
+      "main": [
+        [
+          {
+            "node": "Twilio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Webhook": {
+      "main": [
+        [
+          {
+            "node": "OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI": {
+      "main": [
+        [
+          {
+            "node": "Twilio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase1": {
+      "main": [
+        [
+          {
+            "node": "OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "13a057ba-a858-4210-b59f-6b2ba0fccf2a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f41f09e6bc0f80f2e7a1786090d33014f234febf6f5191829d314d98ffea7864"
+  },
+  "id": "ABX0FaQNfLfwnJqs",
+  "tags": []
+}
